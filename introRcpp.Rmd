@@ -16,21 +16,21 @@ x^{sg} = \|x^{sg}\|_2\times x^{sg} - x^{sg}
 A simple R solution for this problem is:
 
 ```{r gsgUpdate1}
-groups = rep(1:10^3, each = 20)
-subgroups = rep(1:(10^3*5), each = 4)
-n <- length(groups)
+gp = rep(1:10^3, each = 20) # groups
+sgp = rep(1:(10^3*5), each = 4) # subgroups
+n <- length(gp)
 x <- rnorm(n)
 
 # Update groups
-updateGroups1 <- function(x, groups, subgroups){
+updateG <- function(x, groups, subgroups){
   newx <- x # preallocate 
   ugroups <- unique(groups)
   for(i in ugroups){
     gind <- which(groups == i)
-    if(norm(matrix(x[gind],nrow=1), type = "e") < 5){
+    if(norm(matrix(x[gind],nrow=1), type = "e") < 2.5){
       res <- rep(0, length(gind))
     } else{
-      res <- updateSubgroup(x[gind],subgroups[gind])
+      res <- updateSG(x[gind],subgroups[gind])
     }
     newx[gind] <- res
   }
@@ -38,7 +38,7 @@ updateGroups1 <- function(x, groups, subgroups){
 }
 
 # Update subgroup
-updateSubgroup <- function(x, subgroups){
+updateSG <- function(x, subgroups){
   usubgroups <- unique(subgroups)
   newx <- x
   for(i in usubgroups){
@@ -51,19 +51,19 @@ updateSubgroup <- function(x, subgroups){
 In the application, the update can be repeated hundereds of times so speed is an issue especially in more realistic situations with much larger vectors.
 ```{r time1, echo=2,cache=TRUE}
 library(microbenchmark)
-s <- microbenchmark(updateGroups1(x, groups, subgroups), times = 10)
+s <- microbenchmark(updateG(x, gp, sgp), times = 10)
 print(s)
 ```
 ## Using sapply
 By using the apply wrappers I thought I'd see some speedup (and possible extension to milticore)
 ```{r sapplymeth}
-sapplyGroups <- function(x,groups, subgroups){
+sapplyG <- function(x,groups, subgroups){
   ugroups <- unique(groups)
   newx <- sapply(ugroups, function(i) subGroupFunction(x[which(groups == i)], subgroups[which(groups == i)]))
   return(as.numeric(newx))
 }
 subGroupFunction <- function(x, subgroups){
-  if(norm(matrix(x,nrow=1), type = "e") < 5){
+  if(norm(matrix(x,nrow=1), type = "e") < 2.5){
     res <- rep(0, length(x))
     } 
   else {
@@ -79,7 +79,7 @@ subsubGroupFunction <- function(x){
 
 Comparing the codes gives some fustrating results:
 ```{r, echo=1, cache=TRUE}
-s <- microbenchmark(updateGroups1(x, groups, subgroups), sapplyGroups(x,groups, subgroups), times = 10)
+s <- microbenchmark(updateG(x, gp, sgp), sapplyG(x,gp, sgp), times = 10)
 print(s)
 ```
 This is because the sapply method is not preallocating variable size (so each itteration increases the size of the returned vector). Additional time is taken converting the list into a numeric object between sapplys. A good blog on the downfalls of memory allocation in R is http://www.r-bloggers.com/efficient-ragged-arrays-in-r-and-rcpp/.
@@ -88,26 +88,27 @@ This is because the sapply method is not preallocating variable size (so each it
 The Rcpp solution is surprisingly simple and much easier to implement than the sapply version. Some good starting points for including C++ in your R code are: Hadley Wickham's blog http://adv-r.had.co.nz/Rcpp.html and Dirk Eddelbuettel's blog http://dirk.eddelbuettel.com/code/rcpp.html. Addtionally the Armadillo library http://arma.sourceforge.net/docs.html  provides some great linear algebra functions within c++ that make programing easier. 
 
 The folloing code was written in a seperate file from the previous R code. To compile the C++ funcitons the code is sourced and then every function with Rcpp::export is avaliable in the R environment. 
-```{Rcpp, cache = TRUE}
+```{Rcpp, Rccpupdate, cache=TRUE}
 #include <RcppArmadillo.h>
 // [[Rcpp::depends(RcppArmadillo)]]
 using namespace Rcpp;
 // C++ reads one line at a time so subfunctions are defined first
-// Subgroup update
+
+// Subgroup update function
 arma::vec subfun(arma::vec x, arma::vec subgroups){
   arma::vec res(x.size());
   arma::vec usubgroup = unique(subgroups);
   int nsgroups = usubgroup.size();
   
   for (int ka = 0; ka < nsgroups; ka++){
-    arma::umat sgind = arma::find( subgroups == usubgroup(ka));
+    arma::umat sgind = arma::find( subgroups == usubgroup(ka)); // find group indicies
     res.elem(sgind) = x.elem(sgind)*arma::norm(x.elem(sgind),2) - x.elem(sgind);
   }
   return res;
 }
 
-// [[Rcpp::export]]
 // Group update
+// [[Rcpp::export]]
 arma::vec updateC(arma::vec x,arma::vec groups,arma::vec subgroups){
   int n = x.size();
   arma::vec res(n);
@@ -115,8 +116,8 @@ arma::vec updateC(arma::vec x,arma::vec groups,arma::vec subgroups){
   int ngroups = ugroups.size();
   
   for (int ka = 0; ka < ngroups; ka++){
-    arma::umat gind = arma::find( groups == ugroups(ka)); // find group indicies
-    if(arma::norm(x.elem(gind)) < 5){
+    arma::umat gind = arma::find( groups == ugroups(ka)); 
+    if(arma::norm(x.elem(gind)) < 2.5){
       res.elem(gind) = arma::zeros(gind.size());
     } else {
       res.elem(gind) = subfun(x.elem(gind), subgroups.elem(gind));
@@ -126,12 +127,12 @@ arma::vec updateC(arma::vec x,arma::vec groups,arma::vec subgroups){
 }
 ```
 Now to test the functions on a larger example:
-```{r, echo=1:5}
-groups = rep(1:10^4, each = 20)
-subgroups = rep(1:(10^4*5), each = 4)
-n <- length(groups)
+```{r, echo=1:5, cache = TRUE}
+gp = rep(1:10^3, each = 25) # groups
+sgp = rep(1:(10^3*5), each = 5) # subgroups
+n <- length(gp)
 x <- rnorm(n)
-s <- microbenchmark(updateGroups1(x, groups, subgroups), sapplyGroups(x,groups, subgroups), updateC(x,groups, subgroups), times = 5)
+s <- microbenchmark(updateG(x,gp,sgp), sapplyG(x,gp,sgp), updateC(x,gp,sgp), times = 100)
 print(s)
 library(ggplot2)
 autoplot(s)
