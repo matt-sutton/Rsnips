@@ -49,7 +49,7 @@ updateSubgroup <- function(x, subgroups){
 }
 ```
 In the application, the update can be repeated hundereds of times so speed is an issue especially in more realistic situations with much larger vectors.
-```{r time1, echo=2}
+```{r time1, echo=2,cache=TRUE}
 library(microbenchmark)
 s <- microbenchmark(updateGroups1(x, groups, subgroups), times = 10)
 print(s)
@@ -78,7 +78,7 @@ subsubGroupFunction <- function(x){
 ```
 
 Comparing the codes gives some fustrating results:
-```{r, echo=1}
+```{r, echo=1, cache=TRUE}
 s <- microbenchmark(updateGroups1(x, groups, subgroups), sapplyGroups(x,groups, subgroups), times = 10)
 print(s)
 ```
@@ -88,7 +88,7 @@ This is because the sapply method is not preallocating variable size (so each it
 The Rcpp solution is surprisingly simple and much easier to implement than the sapply version. Some good starting points for including C++ in your R code are: Hadley Wickham's blog http://adv-r.had.co.nz/Rcpp.html and Dirk Eddelbuettel's blog http://dirk.eddelbuettel.com/code/rcpp.html. Addtionally the Armadillo library http://arma.sourceforge.net/docs.html  provides some great linear algebra functions within c++ that make programing easier. 
 
 The folloing code was written in a seperate file from the previous R code. To compile the C++ funcitons the code is sourced and then every function with Rcpp::export is avaliable in the R environment. 
-```{Rcpp, fastImp}
+```{Rcpp, cache = TRUE}
 #include <RcppArmadillo.h>
 // [[Rcpp::depends(RcppArmadillo)]]
 using namespace Rcpp;
