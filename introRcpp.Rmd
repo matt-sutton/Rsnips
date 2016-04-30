@@ -9,7 +9,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ## Intergrating R and C++
 
-For my research I came accross a R challenge whcih involved multiple nested loops with group and subgroup structure. My problem involved updating a vector $x$ where for each group $x^{g}$, if $\|x^{g}\|_2> 4$ the group was set to zeros, otherwise each subgroup was updated as:
+For my research I came accross a R challenge whcih involved multiple nested loops with group and subgroup structure. My problem involved updating a vector $x$ where for each group $x^{g}$, if $\|x^{g}\|_2< 2.5$ the group was set to zeros, otherwise each subgroup was updated as:
 \begin{align}
 x^{sg} = \|x^{sg}\|_2\times x^{sg} - x^{sg}
 \end{align}
